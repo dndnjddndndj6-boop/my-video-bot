@@ -1,6 +1,7 @@
-FROM python:3.9-slim-buster
+# استخدام نسخة أحدث ومستقرة من بايثون
+FROM python:3.10-slim-bullseye
 
-# تثبيت FFmpeg ومكتبة التورنت من مخازن النظام لضمان التوافق
+# تحديث وتثبيت الأدوات (تغيير الإصدار يحل مشكلة 404)
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     python3-libtorrent \
@@ -8,12 +9,10 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# نسخ جميع الملفات إلى السيرفر
 COPY . .
 
-# تثبيت مكتبات البايثون الأخرى
-RUN pip install --no-cache-dir -r requirements.txt
+# تثبيت المكتبات مع تحديث pip لضمان عدم حدوث تعارض
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
-# أمر تشغيل البوت
 CMD ["python3", "main.py"]
-

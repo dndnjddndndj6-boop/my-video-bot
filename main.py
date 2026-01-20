@@ -1,70 +1,67 @@
 import os
 import subprocess
-import time
-import libtorrent as lt
 from pyrogram import Client, filters
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# --- بياناتك الشخصية ---
 API_ID = 32370962
 API_HASH = "8d41f5c8b0f5e4efa0a74e13a02e41f7"
 BOT_TOKEN = "8304901124:AAHsFSAyhd5jQs_5zkZGbg4ZO97rYSSniwk"
 
 app = Client("subtitle_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
-user_subs = {}
+user_data = {}
 
 @app.on_message(filters.document)
 async def handle_docs(client, message):
-    file_name = message.document.file_name
-    if file_name.endswith(('.srt', '.ass')):
-        path = await message.download()
-        user_subs[message.from_user.id] = path
-        await message.reply("✅ استلمت ملف الترجمة. الآن أرسل رابط الماجنت (Magnet Link).")
+    if message.document.file_name.endswith(('.srt', '.ass')):
+        user_data[message.from_user.id] = {'sub': await message.download()}
+        await message.reply("✅ تم حفظ الترجمة. أرسل الآن رابط الفيديو.")
 
-@app.on_message(filters.text & filters.regex(r'^magnet:.*'))
-async def handle_magnet(client, message):
+@app.on_message(filters.text & filters.regex(r'^http.*'))
+async def handle_link(client, message):
     user_id = message.from_user.id
-    if user_id not in user_subs:
-        await message.reply("❌ أرسل ملف الترجمة (.srt أو .ass) أولاً!")
-        return
-
-    magnet_link = message.text
-    status_msg = await message.reply("⏳ بدأت عملية تحميل التورنت... قد يستغرق ذلك وقتاً.")
-
-    ses = lt.session()
-    params = {
-        'save_path': '.',
-        'storage_mode': lt.storage_mode_t.storage_mode_sparse,
-    }
-    handle = lt.add_magnet_uri(ses, magnet_link, params)
+    if user_id not in user_data:
+        return await message.reply("❌ أرسل ملف الترجمة أولاً!")
     
-    while not handle.has_metadata():
-        time.sleep(1)
+    user_data[user_id]['url'] = message.text
     
-    await status_msg.edit("✅ تم جلب بيانات التورنت، جاري التحميل الآن...")
-    
-    while handle.status().state != lt.torrent_status.seeding:
-        time.sleep(5)
-    
-    file_name = handle.get_torrent_info().name()
-    output = "final_video.mp4"
-    
-    await status_msg.edit("🎬 جاري دمج الترجمة مع الفيديو... انتظر قليلاً.")
+    # أزرار اختيار الجودة
+    buttons = InlineKeyboardMarkup([
+        [InlineKeyboardButton("1080p (الجودة الأصلية)", callback_data="1080")],
+        [InlineKeyboardButton("720p (توازن ممتاز)", callback_data="720")],
+        [InlineKeyboardButton("480p (مساحة صغيرة)", callback_data="480")]
+    ])
+    await message.reply("اختر الجودة المطلوبة للبدء بالحرق والضغط:", reply_markup=buttons)
 
-    # أمر FFmpeg المعدل: دمج الترجمة فقط بدون شعار
-    cmd = f'ffmpeg -i "{file_name}" -vf "subtitles=\'{user_subs[user_id]}\'" -c:v libx264 -crf 23 -c:a aac "{output}" -y'
-
-    subprocess.run(cmd, shell=True)
-
-    await status_msg.edit("🚀 جاري رفع الفيديو النهائي لتيليجرام...")
-    await message.reply_video(output, caption="✅ تم الدمج بنجاح (بدون شعار)!")
+@app.on_callback_query()
+async def process_video(client, callback_query):
+    user_id = callback_query.from_user.id
+    quality = callback_query.data
+    url = user_data[user_id]['url']
+    sub = user_data[user_id]['sub']
+    output_file = f"video_{quality}p.mp4"
     
-    # تنظيف الملفات لزيادة المساحة
-    if os.path.exists(output): os.remove(output)
-    if os.path.exists(file_name): os.remove(file_name)
-    if user_id in user_subs:
-        if os.path.exists(user_subs[user_id]): os.remove(user_subs[user_id])
-        del user_subs[user_id]
+    await callback_query.message.edit(f"⏳ جاري المعالجة بجودة {quality}p... قد يستغرق الأمر دقائق.")
+    
+    # ضبط الإعدادات حسب اختيارك
+    if quality == "1080":
+        scale = "" # لا يوجد تغيير في الحجم
+        crf = "23" # جودة عالية
+    elif quality == "720":
+        scale = "scale=1280:-2,"
+        crf = "26"
+    else: # 480p
+        scale = "scale=854:-2,"
+        crf = "28"
 
-print("البوت يعمل الآن بدون شعار...")
+    cmd = f'ffmpeg -i "{url}" -vf "{scale}subtitles={sub}" -c:v libx264 -crf {crf} -preset faster -c:a aac -b:a 128k "{output_file}" -y'
+    
+    try:
+        subprocess.run(cmd, shell=True, check=True)
+        await client.send_video(user_id, output_file, caption=f"✅ تم الانتهاء بجودة {quality}p")
+    except Exception as e:
+        await client.send_message(user_id, f"❌ حدث خطأ: {str(e)}")
+    finally:
+        if os.path.exists(output_file): os.remove(output_file)
+
 app.run()

@@ -1,5 +1,5 @@
 FROM python:3.10-slim
-# تثبيت ffmpeg و aria2 للتعامل مع روابط التورنت
+# تثبيت ffmpeg للمعالجة و aria2 لتحميل التورنت و Magnet
 RUN apt-get update && apt-get install -y ffmpeg aria2 && apt-get clean && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY . .

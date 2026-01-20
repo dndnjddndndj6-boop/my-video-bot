@@ -2,6 +2,28 @@ import os
 import subprocess
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+import os
+import threading
+from flask import Flask
+
+# إنشاء سيرفر وهمي لإبقاء البوت حياً في Render
+web_app = Flask(__name__)
+
+@web_app.route('/')
+def home():
+    return "Bot is Running!"
+
+def run_web_app():
+    port = int(os.environ.get("PORT", 8080))
+    web_app.run(host='0.0.0.0', port=port)
+
+# تشغيل السيرفر في خلفية البرنامج
+threading.Thread(target=run_web_app, daemon=True).start()
+
+# --- بقية كود البوت الخاص بك تبدأ من هنا ---
+API_ID = 32370962
+# ... كمل الكود للنهاية ...
+
 
 API_ID = 32370962
 API_HASH = "8d41f5c8b0f5e4efa0a74e13a02e41f7"
